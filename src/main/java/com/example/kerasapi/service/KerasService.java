@@ -5,6 +5,7 @@ import com.google.protobuf.ByteString;
 import io.grpc.ManagedChannel;
 import io.grpc.ManagedChannelBuilder;
 import keras.KerasGrpc;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 
 import java.io.IOException;
@@ -14,9 +15,9 @@ public class KerasService {
 
     private keras.KerasPredictionGrpc.KerasPredictionBlockingStub stub;
 
-    public KerasService() {
+    public KerasService(@Value("${grpc.host}") String host, @Value("${grpc.port}") int port) {
         ManagedChannel channel = ManagedChannelBuilder
-                .forAddress("localhost", 50051)
+                .forAddress(host, port)
                 .usePlaintext()
                 .build();
         stub = keras.KerasPredictionGrpc.newBlockingStub(channel);

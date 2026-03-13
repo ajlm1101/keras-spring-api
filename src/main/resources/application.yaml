@@ -1,3 +1,6 @@
 spring:
   application:
     name: KerasAPI
+grpc:
+  host: ${GRPC_HOST:localhost}
+  port: ${GRPC_PORT:50051}
