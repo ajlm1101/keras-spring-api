@@ -13,5 +13,3 @@ services:
   keras-grpc:
     image: keras-grpc:v1
     container_name: keras-grpc
-    ports:
-      - "50051:50051"

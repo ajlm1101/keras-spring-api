@@ -8,7 +8,7 @@ La API permite enviar una imagen mediante un endpoint HTTP POST `/predict` y rec
 
 ---
 
-# Arquitectura del sistema
+## Arquitectura del sistema
 
 El flujo de ejecución es el siguiente:
 
@@ -25,7 +25,7 @@ Cliente REST -> Controller Spring -> Service gRPC -> Servidor Keras gRPC -> Resp
 
 ---
 
-# Librerías utilizadas
+## Librerías utilizadas
 
 * **Spring Boot 4.0.3**: framework principal para crear la API REST.
 * **Spring WebMVC**: para manejo de peticiones HTTP y multipart/form-data.
@@ -36,11 +36,37 @@ El `pom.xml` ya incluye la generación automática de código gRPC a partir de `
 
 ---
 
-# Estructura del código
+## Ejecución del proyecto
 
-## Controller: `KerasController`
+### Instalación de dependencias
 
-Expone el endpoint `/predict`, recibe la imagen y delega la predicción al service.
+Este proyecto requiere **Java 21** y **Maven**. Se debe realizar un **clean package** antes de iniciar la aplicación para generar el ejecutable y sus dependencias:
+
+```bash
+mvn clean package
+```
+
+### Ejecutar el servicio
+
+Para iniciar la aplicación, desde el directorio target generado ejecutar:
+
+```bash
+java -jar keras-spring-api-0.0.1-SNAPSHOT.jar
+```
+
+La API REST estará disponible en:
+
+```
+http://localhost:8080
+```
+
+---
+
+## Explicación del código
+
+### Controller: `KerasController`
+
+Expone el endpoint POST `/predict`, recibe la imagen en formato multipart y delega la predicción al service.
 
 ```java
 @PostMapping("/predict")
@@ -49,23 +75,35 @@ public Prediction predict(@RequestParam("file") MultipartFile file) throws IOExc
 }
 ```
 
----
-
-## Service: `KerasService`
+### Service: `KerasService`
 
 Se encarga de construir la petición gRPC y comunicarse con el servidor Keras.
 
-```java id="vby7gu"
+El constructor inicializa la comunicación con el servidor gRPC.
+
+* Lee host y port desde la configuración de Spring (definidas en `application.yml`).
+* Crea un ManagedChannel para la comunicación con el servidor.
+* Genera un BlockingStub, que se utilizará para invocar el servicio de predicción.
+
+```java
 private keras.KerasPredictionGrpc.KerasPredictionBlockingStub stub;
 
-public KerasService() {
+public KerasService(@Value("${grpc.host}") String host, @Value("${grpc.port}") int port) {
     ManagedChannel channel = ManagedChannelBuilder
-            .forAddress("localhost", 50051)
+            .forAddress(host, port)
             .usePlaintext()
             .build();
     stub = keras.KerasPredictionGrpc.newBlockingStub(channel);
 }
+```
 
+Envía una imagen al servidor Keras y devuelve la predicción:
+
+* Construye una petición `ImageRequest` con el nombre y los bytes de la imagen.
+* Invoca el método `predict` del servicio gRPC.
+* Convierte la respuesta (`PredictionResponse`) en un objeto `Prediction`.
+
+```java
 public Prediction predict(String filename, byte[] fileBytes) throws IOException {
     KerasGrpc.ImageRequest request = KerasGrpc.ImageRequest.newBuilder()
         .setFilename(filename)
@@ -80,9 +118,7 @@ public Prediction predict(String filename, byte[] fileBytes) throws IOException 
 }
 ```
 
----
-
-## Modelo de respuesta: `Prediction`
+### Modelo de respuesta: `Prediction`
 
 Representa la predicción devuelta al cliente:
 
@@ -98,38 +134,7 @@ public class Prediction {
 * `predictedClass`: clase predicha por el modelo
 * `confidence`: probabilidad de la predicción
 
----
-
-# Ejecución del proyecto
-
-Este proyecto requiere **Java 21** y **Maven**.
-
-## Construcción y ejecución
-
-Ejecutar un **clean compile** antes de correr la aplicación:
-
-```bash
-mvn clean compile
-mvn spring-boot:run
-```
-
-La API REST estará disponible en:
-
-```
-http://localhost:8080
-```
-
----
-
-# Endpoint de la API
-
-## POST `/predict`
-
-### Parámetros
-
-* `file` (MultipartFile): archivo de imagen enviado como `multipart/form-data`.
-
-### Respuesta
+#### Respuesta
 
 La API devuelve un JSON con la siguiente estructura:
 
@@ -143,11 +148,11 @@ La API devuelve un JSON con la siguiente estructura:
 
 ---
 
-# Dockerización y despliegue
+## Dockerización y despliegue
 
 La API REST puede ejecutarse dentro de un **contenedor Docker** para facilitar su despliegue y asegurar que se ejecute en un entorno controlado.
 
-## Dockerfile
+### Dockerfile
 
 El proyecto contiene un `Dockerfile` similar que realiza las siguientes acciones:
 
@@ -156,17 +161,17 @@ El proyecto contiene un `Dockerfile` similar que realiza las siguientes acciones
 * Expone el puerto **8080** donde se ejecuta la API REST.
 * Inicia la aplicación utilizando `java -jar app.jar`.
 
----
+### Construcción de la imagen
 
-## Construcción de la imagen
+Para construir el contenedor se deberá ejecutar el siguiente comando desde la raíz del proyecto en la que se encuentra el `Dockerfile`.
 
 ```bash
 docker build -t keras-spring-api:v1 .
 ```
 
----
+### Ejecución del contenedor
 
-## Ejecución del contenedor
+Para ejecutar el contenedor deberá usarse el siguiende comando:
 
 ```bash
 docker run --name keras-spring-api -p 8080:8080 keras-spring-api:v1
@@ -178,13 +183,43 @@ La API REST estará accesible en:
 http://localhost:8080
 ```
 
-y enviando peticiones al endpoint `/predict` funcionará de forma idéntica a la ejecución local.
+### Docker Compose
+
+El proyecto también incluye un fichero `docker-compose.yml` que permite ejecutar conjuntamente la API REST y el servidor gRPC del modelo Keras.
+
+Se definen dos servicios:
+
+* **keras-api**:
+
+  * Construido a partir del Dockerfile del proyecto.
+  * Expone el puerto 8080 para acceder a la API.
+  * Se conecta al servicio gRPC mediante las variables de entorno GRPC_HOST y GRPC_PORT.
+
+* **keras-grpc**:
+
+  * Utiliza la imagen keras-grpc:v1, generada en el proyecto del modelo.
+  * No expone puertos al host, por lo que solo es accesible desde la red interna de Docker.
+  * De esta forma, el servicio gRPC no puede invocarse directamente desde la máquina anfitriona, y la API REST actúa como único punto de entrada al sistema.
+
+### Despliegue del Docker Compose
+
+Para ejecutar ambos conenedores deberá usarse el siguiende comando:
+
+```bash
+docker-compose up -d
+```
+
+La API REST estará accesible en:
+
+```
+http://localhost:8080
+```
 
 ---
 
-# Posibles mejoras
+## Posibles mejoras
 
-* Añadir validación del tipo y tamaño de imagen.
-* Manejar errores de conexión con el servidor gRPC.
-* Implementar **batch prediction** enviando varias imágenes.
-* Configurar la dirección del servidor gRPC mediante variables de entorno.
+* Añadir validación de tipo de imagen.
+* Agregar más datos a la respuesta que pueda proporcionar el modelo.
+* Implementar predicción por lotes en caso de recibir varias imágenes.
+* Mejorar la seguridad del contenedor mediante grupos y usuarios.
