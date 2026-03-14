@@ -1,12 +1,14 @@
+# Imagen base
 FROM eclipse-temurin:21-jdk
 
+# Directorio de trabajo
 WORKDIR /app
 
-# Copiar el jar compilado desde target
+# Copiamos archivos del host al contenedor
 COPY target/keras-spring-api-0.0.1-SNAPSHOT.jar app.jar
 
-# Exponer puerto
+# Exponemos puerto de la API
 EXPOSE 8080
 
-# Ejecutar la API
+# Iniciamos la API
 CMD ["java", "-jar", "app.jar"]

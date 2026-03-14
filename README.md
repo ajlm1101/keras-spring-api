@@ -3,8 +3,7 @@
 ## Descripción general
 
 Este proyecto implementa una **API REST en Spring Boot** que actúa como **cliente de un servidor gRPC** para la clasificación de imágenes de flores.
-
-La API permite enviar una imagen mediante un endpoint HTTP POST `/predict` y recibe como respuesta la **clase de flor predicha junto con su nivel de confianza**, utilizando un servidor gRPC que ejecuta un modelo **MobileNetV2** entrenado con TensorFlow/Keras.
+La API permite enviar una imagen mediante un endpoint HTTP POST `/predict` y recibe como respuesta la clase de flor predicha junto con su nivel de confianza, utilizando un servidor gRPC que ejecuta un modelo entrenado con TensorFlow/Keras.
 
 ---
 
@@ -83,7 +82,7 @@ El constructor inicializa la comunicación con el servidor gRPC.
 
 * Lee host y port desde la configuración de Spring (definidas en `application.yml`).
 * Crea un ManagedChannel para la comunicación con el servidor.
-* Genera un BlockingStub, que se utilizará para invocar el servicio de predicción.
+* Genera un `BlockingStub`, que se utilizará para invocar el servicio de predicción.
 
 ```java
 private keras.KerasPredictionGrpc.KerasPredictionBlockingStub stub;
@@ -154,12 +153,20 @@ La API REST puede ejecutarse dentro de un **contenedor Docker** para facilitar s
 
 ### Dockerfile
 
-El proyecto contiene un `Dockerfile` similar que realiza las siguientes acciones:
+El proyecto contiene un `Dockerfile` que realiza las siguientes acciones:
 
 * Utiliza **Eclipse Temurin OpenJDK 21** como imagen base.
 * Copia el jar compilado dentro del contenedor.
 * Expone el puerto **8080** donde se ejecuta la API REST.
 * Inicia la aplicación utilizando `java -jar app.jar`.
+
+```Dockerfile
+FROM eclipse-temurin:21-jdk
+WORKDIR /app
+COPY target/keras-spring-api-0.0.1-SNAPSHOT.jar app.jar
+EXPOSE 8080
+CMD ["java", "-jar", "app.jar"]
+```
 
 ### Construcción de la imagen
 
@@ -200,6 +207,23 @@ Se definen dos servicios:
   * Utiliza la imagen keras-grpc:v1, generada en el proyecto del modelo.
   * No expone puertos al host, por lo que solo es accesible desde la red interna de Docker.
   * De esta forma, el servicio gRPC no puede invocarse directamente desde la máquina anfitriona, y la API REST actúa como único punto de entrada al sistema.
+
+```yaml
+services:
+  keras-api:
+    build: .
+    container_name: keras-api
+    ports:
+      - "8080:8080"
+    environment:
+      - GRPC_HOST=keras-grpc
+      - GRPC_PORT=50051
+    depends_on:
+      - keras-grpc
+  keras-grpc:
+    image: keras-grpc:v1
+    container_name: keras-grpc
+```
 
 ### Despliegue del Docker Compose
 
