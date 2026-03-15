@@ -238,6 +238,171 @@ La API REST estará accesible en:
 http://localhost:8080
 ```
 
+### Despliege mediante Kubernetes
+
+Este despliegue migra una arquitectura de microservicios desde Docker Compose a un clúster de Kubernetes, garantizando escalabilidad automática y aislamiento de red.
+Para ello se define el siguiente fichero `k8s-deployment.yml`
+
+En primer lugar, se define un acceso público para la API y un acceso privado (ClusterIP) para el servicio gRPC mediante dos servicios:
+
+```yaml
+# Servicio interno (ClusterIP) para gRPC
+apiVersion: v1
+kind: Service
+metadata:
+  name: keras-grpc-svc
+  labels:
+    app: keras-grpc
+spec:
+  type: ClusterIP
+  selector:
+    app: keras-grpc
+  ports:
+    - name: grpc
+      port: 50051
+      targetPort: 50051
+---
+# Servicio expuesto para la API
+apiVersion: v1
+kind: Service
+metadata:
+  name: keras-api-svc
+  labels:
+    app: keras-api
+spec:
+  type: LoadBalancer
+  selector:
+    app: keras-api
+  ports:
+    - name: http
+      port: 8080
+      targetPort: 8080
+```
+
+Seguidamente, se define la configuración de los pods y los límites de recursos necesarios para el autoescalado.
+
+```yaml
+# Deployment de gRPC
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: keras-grpc-deploy
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: keras-grpc
+  template:
+    metadata:
+      labels:
+        app: keras-grpc
+    spec:
+      containers:
+        - name: keras-grpc
+          image: keras-grpc:v1
+          ports:
+            - containerPort: 50051
+          resources:
+            # Requerido por el HPA para calcular el 70%
+            requests:
+              cpu: "200m"
+              memory: "256Mi"
+            limits:
+              cpu: "500m"
+              memory: "512Mi"
+---
+# Deployment de la API
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: keras-api-deploy
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: keras-api
+  template:
+    metadata:
+      labels:
+        app: keras-api
+    spec:
+      containers:
+        - name: keras-api
+          image: keras-spring-api:v1
+          ports:
+            - containerPort: 8080
+          env:
+            # Variables de entorno (sobreescribe las ya existentes)
+            - name: GRPC_HOST
+              value: "keras-grpc-svc"
+            - name: GRPC_PORT
+              value: "50051"
+          resources:
+            # Requerido por el HPA para calcular el 70%
+            requests:
+              cpu: "200m"
+              memory: "256Mi"
+            limits:
+              cpu: "500m"
+              memory: "512Gi"
+```
+
+Finalmente, se establce la configuración para escalar de 1 a 5 réplicas cuando el uso de CPU supere el 70%. Se aplica tanto a la API como al servicio gRPC.
+
+```yaml
+# Autoescalado para gRPC (HPA)
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: keras-grpc-hpa
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: keras-grpc-deploy
+  minReplicas: 1
+  maxReplicas: 5
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: 70
+---
+# Autoescalado para la API (HPA)
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: keras-api-hpa
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: keras-api-deploy
+  minReplicas: 1
+  maxReplicas: 5
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: 70
+```
+
+Una vez está lista la configuración, se podrá usar el siguiente comando para el despliegue:
+
+```bash
+kubectl apply -f k8s-deployment.yml
+```
+
+La API REST volverá a quedar accesible en:
+
+```
+http://localhost:8080
+```
+
 ---
 
 ## Posibles mejoras
