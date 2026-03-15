@@ -156,6 +156,7 @@ La API REST puede ejecutarse dentro de un **contenedor Docker** para facilitar s
 El proyecto contiene un `Dockerfile` que realiza las siguientes acciones:
 
 * Utiliza **Eclipse Temurin OpenJDK 21** como imagen base.
+* Crea dos variables de entorno para la conexión con el servicio gRCP.
 * Copia el jar compilado dentro del contenedor.
 * Expone el puerto **8080** donde se ejecuta la API REST.
 * Inicia la aplicación utilizando `java -jar app.jar`.
@@ -163,6 +164,8 @@ El proyecto contiene un `Dockerfile` que realiza las siguientes acciones:
 ```Dockerfile
 FROM eclipse-temurin:21-jdk
 WORKDIR /app
+ENV GRPC_HOST="keras-grpc"
+ENV GRPC_PORT=50051
 COPY target/keras-spring-api-0.0.1-SNAPSHOT.jar app.jar
 EXPOSE 8080
 CMD ["java", "-jar", "app.jar"]
@@ -200,7 +203,6 @@ Se definen dos servicios:
 
   * Construido a partir del Dockerfile del proyecto.
   * Expone el puerto 8080 para acceder a la API.
-  * Se conecta al servicio gRPC mediante las variables de entorno GRPC_HOST y GRPC_PORT.
 
 * **keras-grpc**:
 
@@ -215,9 +217,6 @@ services:
     container_name: keras-api
     ports:
       - "8080:8080"
-    environment:
-      - GRPC_HOST=keras-grpc
-      - GRPC_PORT=50051
     depends_on:
       - keras-grpc
   keras-grpc:
